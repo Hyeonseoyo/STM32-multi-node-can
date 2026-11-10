@@ -68,7 +68,7 @@ STM32 HAL 라이브러리에 의존하지 않고 Reference Manual을 기반으�
 
 | 구분 | 부품 | 수량 | 용도 |
 |---|---|---|---|
-| MCU | NUCLEO-F446RE | 2 | Node 1, Node 2 |
+| MCU | STM32F446RE | 2 | Node 1, Node 2 |
 | MCU | STM32F103C8T6 | 2 | Node 3, Node 4 |
 | CAN Transceiver | SN65HVD230 | 4 | CAN 신호 송수신 |
 | 온도 센서 | SHT20 | 1 | 온도 데이터 측정 |
@@ -124,6 +124,8 @@ CAN 버스의 양 끝단에만 종단저항을 배치하고, 중간에 연결된
 
 ### 3.4 주요 GPIO 및 주변장치 연결
 
+### 3.4 주요 GPIO 및 주변장치 연결
+
 | Node | 주변장치 | STM32 핀 | 기능 |
 |---|---|---|---|
 | Node 1 | Brake LED | PB4 | GPIO Output |
@@ -132,10 +134,12 @@ CAN 버스의 양 끝단에만 종단저항을 배치하고, 중간에 연결된
 | Node 2 | Potentiometer | PA0 | ADC Input |
 | Node 2 | SHT20 | PB8 / PB9 | I2C1 SCL / SDA |
 | Node 2 | UART2 | PA2 | UART TX |
+| Node 2 | CAN1 | PA11 / PA12 | CAN RX / TX |
 | Node 3 | CAN | PA11 / PA12 | CAN RX / TX |
+| Node 4 | CAN | PA11 / PA12 | CAN RX / TX |
+| Node 4 | OLED | PB6 / PB7 | I2C1 SCL / SDA |
 
 각 노드의 CAN RX/TX는 SN65HVD230 트랜시버에 연결되며, 트랜시버의 CANH/CANL을 통해 공통 CAN 버스에 접속합니다.
-
 
 
 
