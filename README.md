@@ -2,6 +2,7 @@
 
 4개의 STM32 MCU를 활용한 레지스터 기반 CAN 통신 및 분산 제어 시스템
 
+
 ## 1. 프로젝트 개요 (Overview)
 
 본 프로젝트는 4개의 STM32 MCU를 CAN 버스로 연결하여 센서 데이터 수집, 제어 판단, 액추에이터 구동 및 상태 모니터링을 수행하는 다중 노드 통신 시스템입니다.
@@ -17,6 +18,7 @@ STM32 HAL 라이브러리에 의존하지 않고 Reference Manual을 기반으�
 - **Distributed Control:** 센서 데이터 수집, 제어 판단, 액추에이터 구동, 모니터링 기능을 노드별로 분리
 - **CAN Message Filtering:** CAN ID 기반 하드웨어 필터를 설정하여 필요한 메시지만 선택적으로 수신
 - **Real-Time Monitoring:** OLED 디스플레이를 통해 센서 데이터 및 액추에이터 동작 상태 표시
+
 
 ## 2. 시스템 구성 (System Architecture)
 
