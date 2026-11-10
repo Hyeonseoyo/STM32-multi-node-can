@@ -271,4 +271,200 @@ Node 4는 총 4개의 메시지를 수신해야 하므로 Filter Bank 0과 Bank 
 
 필터를 통과한 메시지는 RX FIFO 0에 저장되며, 각 노드는 Polling 방식으로 메시지를 읽고 CAN ID 및 DLC를 확인하여 해당 기능을 수행합니다.
 
+## 5. 주요 구현 내용
 
+본 프로젝트에서는 STM32 HAL 라이브러리를 사용하지 않고, Reference Manual을 기반으로 레지스터를 직접 설정하여 CAN 통신과 주변장치 제어 기능을 구현했습니다.
+
+CAN 초기화, 메시지 송수신, 하드웨어 필터링 및 오류 상태 확인 기능을 직접 구현했으며, 각 노드의 역할에 맞게 제어 로직을 분리했습니다.
+
+### 5.1 CAN 및 GPIO 초기화
+
+STM32F446RE와 STM32F103C8T6은 GPIO 설정 레지스터의 구조가 다르므로, MCU별로 GPIO 초기화 함수를 구현했습니다.
+
+**STM32F446RE (Node 1, 2)**
+
+- `RCC_AHB1ENR`: GPIOA 클럭 활성화
+- `GPIOA_MODER`: PA11, PA12를 Alternate Function Mode로 설정
+- `GPIOA_AFRH`: PA11, PA12에 AF9(CAN1) 설정
+- `RCC_APB1ENR`: CAN1 클럭 활성화
+
+**STM32F103C8T6 (Node 3, 4)**
+
+- `RCC_APB2ENR`: AFIO 및 GPIOA 클럭 활성화
+- `AFIO_MAPR`: CAN RX/TX를 PA11/PA12에 매핑
+- `GPIOA_CRH`: PA11을 Floating Input, PA12를 Alternate Function Push-Pull Output으로 설정
+- `RCC_APB1ENR`: CAN 클럭 활성화
+
+CAN 주변장치는 초기화 모드에서 통신 관련 레지스터를 설정한 후 Normal Mode로 전환하도록 구현했습니다.
+
+**CAN 초기화 순서**
+
+1. GPIO 및 CAN 주변장치 클럭 활성화
+2. CAN Sleep Mode 해제
+3. `CAN_MCR`의 `INRQ` 비트를 설정하여 Initialization Mode 진입
+4. `CAN_MSR`의 `INAK` 비트로 초기화 모드 진입 확인
+5. CAN 동작 옵션 및 Bit Timing 설정
+6. `INRQ` 비트를 해제하고 Normal Mode 진입 확인
+7. CAN 수신 필터 설정
+
+### 5.2 CAN Bit Timing 설정
+
+CAN 통신 속도는 `CAN_BTR` 레지스터의 BRP, TS1, TS2, SJW 필드를 설정하여 결정했습니다.
+
+STM32F446RE와 STM32F103C8T6은 CAN 주변장치에 공급되는 APB1 클럭이 다르므로, 동일한 500 kbps 통신 속도를 얻기 위해 Prescaler를 각각 설정했습니다.
+
+| 항목 | STM32F446RE | STM32F103C8T6 |
+|---|---|---|
+| APB1 Clock | 16 MHz | 8 MHz |
+| BRP (Register Value) | 1 | 0 |
+| Prescaler | 2 | 1 |
+| BS1 | 13 tq | 13 tq |
+| BS2 | 2 tq | 2 tq |
+| SJW | 1 tq | 1 tq |
+| Total Time Quanta | 16 tq | 16 tq |
+| CAN Bitrate | 500 kbps | 500 kbps |
+
+CAN 통신 속도는 다음 식으로 계산했습니다.
+
+`CAN Bitrate = APB1 Clock / (Prescaler × (1 + BS1 + BS2))`
+
+- STM32F446RE: 16 MHz / (2 × 16) = 500 kbps
+- STM32F103C8T6: 8 MHz / (1 × 16) = 500 kbps
+
+두 MCU 모두 Sample Point는 87.5%로 설정했습니다.
+
+### 5.3 CAN 수신 필터 구현
+
+각 노드에서 필요한 메시지만 수신하도록 bxCAN의 하드웨어 필터를 직접 설정했습니다.
+
+**주요 설정 레지스터**
+
+| 레지스터 | 설정 내용 |
+|---|---|
+| `CAN_FMR` | 필터 초기화 모드 진입 및 해제 |
+| `CAN_FA1R` | Filter Bank 활성화 및 비활성화 |
+| `CAN_FM1R` | Identifier List Mode 설정 |
+| `CAN_FS1R` | 32-bit Scale 설정 |
+| `CAN_FFA1R` | RX FIFO 0 할당 |
+| `CAN_FxR1/R2` | 수신할 CAN ID 등록 |
+
+Standard CAN ID는 11비트이므로 필터 레지스터의 STID 영역에 맞게 21비트 왼쪽 시프트하여 저장했습니다.
+
+**Node 1의 필터 설정 코드 일부**
+
+```c
+// Brake Command (0x100)
+*(volatile uint32_t*) 0x40006640U = ((uint32_t)CAN_ID_BRAKE_CMD << 21);
+
+// Fan Command (0x110)
+*(volatile uint32_t*) 0x40006644U = ((uint32_t)CAN_ID_FAN_CMD << 21);
+```
+
+Node 1과 Node 3은 Filter Bank 0을 사용하고, 총 4개의 CAN ID를 수신하는 Node 4는 Filter Bank 0과 Bank 1을 사용하도록 구현했습니다.
+
+### 5.4 TX Mailbox 기반 메시지 송신
+
+CAN 메시지 송신은 bxCAN에서 제공하는 3개의 TX Mailbox를 이용하여 구현했습니다.
+
+`can_send()` 함수는 송신할 CAN ID, 데이터 버퍼, DLC를 인자로 받아 메시지를 구성합니다.
+
+**송신 처리 순서**
+
+1. CAN ID, DLC 및 데이터 포인터 유효성 검사
+2. `CAN_TSR`의 `TME0~TME2` 비트를 확인하여 사용 가능한 TX Mailbox 선택
+3. `CAN_TIxR`에 Standard CAN ID 설정
+4. `CAN_TDTxR`에 DLC 설정
+5. `CAN_TDLxR`, `CAN_TDHxR`에 데이터 저장
+6. `CAN_TIxR`의 `TXRQ` 비트를 설정하여 송신 요청
+
+송신 데이터는 최대 8바이트까지 처리할 수 있도록 구현했으며, 하위 4바이트와 상위 4바이트를 각각의 데이터 레지스터에 저장합니다.
+
+사용 가능한 TX Mailbox가 없거나 입력값이 유효하지 않은 경우 `can_send()`는 `0`을 반환합니다.
+
+함수가 `1`을 반환하면 송신 요청이 Mailbox에 등록되었음을 의미하며, 실제 버스 전송 성공 여부와는 구분됩니다.
+
+Node 1에서는 `can_poll_tx_result()` 함수를 통해 `CAN_TSR`의 송신 완료 및 성공 플래그를 확인하고, 성공과 실패 횟수를 각각 카운트하도록 구현했습니다.
+
+### 5.5 RX FIFO 기반 메시지 수신
+
+CAN 메시지 수신은 RX FIFO 0을 사용하는 Polling 방식으로 구현했습니다.
+
+`can_receive()` 함수는 FIFO에 수신 메시지가 존재하는지 확인한 후 CAN ID, DLC 및 데이터를 추출합니다.
+
+**수신 처리 순서**
+
+1. `CAN_RF0R`의 `FMP0` 필드를 확인하여 수신 대기 메시지 확인
+2. `CAN_RI0R`에서 CAN ID 추출
+3. `CAN_RDT0R`에서 DLC 추출
+4. `CAN_RDL0R`, `CAN_RDH0R`에서 데이터 추출
+5. `CAN_RF0R`의 `RFOM0` 비트를 설정하여 FIFO 메시지 해제
+
+**수신 FIFO 확인 코드**
+
+```c
+// RX FIFO 0에 대기 중인 메시지 확인
+if((*(volatile uint32_t*) 0x4000640CU & 0b11U) == 0U)
+{
+    return 0;
+}
+```
+
+수신한 CAN ID와 DLC를 확인하여 메시지 종류와 데이터 형식을 구분하고, 해당 노드의 처리 함수에서 사용하도록 구성했습니다.
+
+CAN 하드웨어 필터로 수신 대상을 제한하고, 소프트웨어에서도 CAN ID와 DLC를 확인하여 메시지를 처리하도록 구현했습니다.
+
+### 5.6 CAN 오류 감지 및 브레이크 타임아웃 처리
+
+Node 1에서는 CAN 통신 오류 상태를 확인하고, 브레이크 명령 수신이 중단되는 상황에 대응하기 위한 기능을 구현했습니다.
+
+**CAN 오류 상태 모니터링**
+
+`can_poll_error_status()` 함수에서 `CAN_ESR` 레지스터를 읽어 다음 정보를 확인합니다.
+
+| 항목 | 설명 |
+|---|---|
+| TEC | Transmit Error Counter |
+| REC | Receive Error Counter |
+| EWGF | Error Warning 상태 |
+| EPVF | Error Passive 상태 |
+| BOFF | Bus-Off 상태 |
+
+확인한 오류 플래그를 기반으로 `can_handle_error()` 함수에서 CAN 상태를 구분하고, Bus-Off 진입 및 복구 횟수를 기록합니다.
+
+CAN 초기화 시 `ABOM` 비트를 활성화하여 Bus-Off 상태에서 하드웨어의 자동 복구 기능을 사용하도록 설정했습니다.
+
+**브레이크 명령 타임아웃 처리**
+
+Node 1은 SysTick을 이용하여 1ms 단위의 시스템 시간을 관리합니다.
+
+정상적인 브레이크 명령을 수신하면 마지막 수신 시각을 갱신하며, 이후 2초 동안 새로운 정상 브레이크 명령을 수신하지 못하면 브레이크 LED를 OFF하도록 구현했습니다.
+
+- 타임아웃 기준: 2000ms
+- 정상 브레이크 명령 수신 시 마지막 수신 시각 갱신
+- 타임아웃 발생 시 브레이크 LED OFF
+- 타임아웃 발생 횟수 기록
+- 브레이크 OFF 상태 메시지 송신 요청
+
+또한 Bus-Off 상태로 진입하는 경우에도 브레이크 LED를 OFF하도록 구성했습니다.
+
+이러한 처리는 실제 차량의 제동 시스템이 아닌, CAN 기반 보조 제어 동작을 모사하는 프로젝트의 제어 정책에 따라 구현했습니다.
+
+### 5.7 OLED 상태 모니터링 및 데이터 갱신
+
+Node 4에서는 CAN 메시지 수신과 OLED 화면 갱신을 분리하여 처리하도록 구현했습니다.
+
+OLED는 I2C Polling 방식으로 제어하며, CAN 메시지로 수신한 차량 속도, 온도, 브레이크 및 팬 상태를 표시합니다.
+
+- `dashboard_receive_pending()`: RX FIFO에 대기 중인 CAN 메시지를 연속으로 수신하여 데이터 갱신
+- `valid_mask`: 각 데이터의 정상 수신 여부 관리
+- `dirty_mask`: 화면 갱신이 필요한 항목 관리
+- `dashboard_update_one_field()`: 갱신이 필요한 화면 항목을 한 번에 하나씩 처리
+- `dashboard_process()`: CAN 수신 처리와 OLED 화면 갱신 수행
+
+CAN 메시지를 수신했을 때 데이터가 변경되었거나 아직 정상 수신되지 않은 항목인 경우 `dirty_mask`를 설정하도록 구현했습니다.
+
+OLED 화면에서는 변경이 필요한 항목만 갱신하며, Round-Robin 방식으로 갱신 대상을 선택합니다.
+
+한 번의 처리 루프에서 최대 하나의 표시 항목만 갱신한 뒤 다시 CAN 수신을 확인하도록 구성하여, OLED 갱신 중 수신 처리가 장시간 중단되는 상황을 줄이고자 했습니다.
+
+다만 OLED의 I2C 전송은 Blocking 방식이며 CAN 수신도 Polling 방식이므로, 화면 갱신 중 발생하는 모든 CAN 메시지의 수신을 보장하는 구조는 아닙니다.
