@@ -1,0 +1,9 @@
+**/build/
+**/.settings/
+**/.vscode/
+**/.clangd
+
+*.elf
+*.hex
+*.bin
+*.map
