@@ -475,19 +475,19 @@ OLED 화면에서는 변경이 필요한 항목만 갱신하며, Round-Robin 방
 
 4개의 STM32 노드를 SN65HVD230 CAN 트랜시버를 통해 하나의 CAN 버스로 연결하고, 각 노드에 센서·액추에이터·OLED를 배치했습니다.
 
-![4-Node CAN 시스템 전체 구성](assets/system-overview.png)
+![4-Node CAN 시스템 전체 구성](assets/system-overview.jpg)
 
 **CAN 트랜시버 연결**
 
 각 노드는 SN65HVD230을 통해 CANH/CANL 버스에 접속하며, 버스 양 끝단에 120Ω 종단저항을 배치했습니다.
 
-![SN65HVD230 CAN 트랜시버 연결](assets/can-transceivers.png)
+![SN65HVD230 CAN 트랜시버 연결](assets/can-transceivers.jpg)
 
 ### 6.2 OLED 상태 표시 및 제어 결과
 
 Node 4의 OLED에는 Node 2에서 송신한 속도·온도 데이터와 Node 1에서 송신한 브레이크·팬 동작 상태가 표시됩니다.
 
-![OLED에 표시된 차량 속도, 온도, 브레이크 및 팬 상태](assets/oled-dashboard.png)
+![OLED에 표시된 차량 속도, 온도, 브레이크 및 팬 상태](assets/oled-dashboard.jpg)
 
 사진에 표시된 값은 다음과 같습니다.
 
