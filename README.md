@@ -506,12 +506,12 @@ CAN 통신을 통해 센서 데이터에 따라 액추에이터가 제어되고,
 
 **1. 브레이크 제어 (Brake Control)**
 
-https://github.com/user-attachments/assets/88faca0f-4b53-4a30-a663-39b0489582a4
+https://github.com/user-attachments/assets/a535d790-f4fe-4eca-9e74-cb6ea3dddd12
 
 가변저항을 조절하여 차량 속도를 변경하고, 설정된 임계값(100 km/h)에 따라 브레이크 LED가 ON/OFF 되는 동작을 확인할 수 있습니다. 또한 브레이크 상태가 OLED에 반영되는 과정을 보여줍니다.
 
 **2. 냉각 팬 제어 (Fan Control)**
 
-https://github.com/user-attachments/assets/67db8a51-0ba3-4fbe-983e-e4e26d68fd94
+https://github.com/user-attachments/assets/6d49cf15-df6b-48f1-944e-b5f92d561e02
 
 SHT20 센서의 온도 변화에 따라 설정된 임계값(26°C)을 기준으로 냉각 팬이 ON/OFF 되는 동작을 확인할 수 있습니다. 또한 팬의 동작 상태가 OLED에 반영되는 과정을 보여줍니다.
